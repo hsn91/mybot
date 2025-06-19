@@ -114,15 +114,50 @@ class TwitterClient:
             except Exception as e:
                 logger.error(f"Error entering username: {str(e)}")
                 return False
-            
-            # STEP 2: PASSWORD ENTRY
+              # STEP 2: PASSWORD ENTRY
             logger.info("STEP 2: Entering password")
             try:
-                # Check if we're on password page
-                password_visible = self.page.wait_for_selector('input[name="password"]', state="visible", timeout=10000)
+                # Check if we're on password page with increased timeout and better error handling
+                logger.info("Waiting for password field to appear...")
+                try:
+                    password_visible = self.page.wait_for_selector('input[name="password"]', state="visible", timeout=30000)  # Increased from 10s to 30s
+                    
+                    if password_visible:
+                        logger.info("Password field found successfully")
+                    else:
+                        logger.warning("Password field found but may not be interactable")
+                    
+                    # Take screenshot to debug what's visible
+                    self.page.screenshot(path="password_field_found.png")
+                    
+                except Exception as pwd_err:
+                    logger.error(f"Error finding standard password field: {str(pwd_err)}")
+                    
+                    # Take screenshot to see what's on screen when it fails
+                    self.page.screenshot(path="password_field_error.png")
+                    
+                    # Try alternative selectors that might work
+                    logger.info("Trying alternative password selectors...")
+                    alt_selectors = [
+                        "[data-testid='password']",
+                        "input[type='password']",
+                        ".r-30o5oe.r-1niwhzg",  # Twitter's class-based selectors
+                        "input[autocomplete='current-password']"
+                    ]
+                    
+                    password_visible = None
+                    for selector in alt_selectors:
+                        try:
+                            logger.info(f"Trying selector: {selector}")
+                            password_visible = self.page.wait_for_selector(selector, state="visible", timeout=5000)
+                            if password_visible:
+                                logger.info(f"Found password field with alternative selector: {selector}")
+                                break
+                        except Exception:
+                            continue
                 
                 if password_visible:
-                    self.page.fill('input[name="password"]', os.getenv("TWITTER_PASSWORD"))
+                    self.page.fill(password_visible, os.getenv("TWITTER_PASSWORD"))
                     logger.info("Password entered")
                     random_delay(2, 3)
                     
