@@ -83,8 +83,7 @@ class TwitterClient:
             # Take screenshot
             self.page.screenshot(path="1_login_page.png")
             logger.info("Saved login page screenshot")
-            
-            # STEP 1: USERNAME ENTRY
+              # STEP 1: USERNAME ENTRY
             logger.info("STEP 1: Entering username")
             # Make sure the username field is visible
             try:
@@ -114,19 +113,24 @@ class TwitterClient:
             except Exception as e:
                 logger.error(f"Error entering username: {str(e)}")
                 return False
-              # STEP 2: PASSWORD ENTRY
+                
+            # STEP 2: PASSWORD ENTRY
             logger.info("STEP 2: Entering password")
             try:
                 # Check if we're on password page with increased timeout and better error handling
                 logger.info("Waiting for password field to appear...")
+                password_found = False
+                password_selector = 'input[name="password"]'
+                
                 try:
-                    password_visible = self.page.wait_for_selector('input[name="password"]', state="visible", timeout=30000)  # Increased from 10s to 30s
-                    
-                    if password_visible:
-                        logger.info("Password field found successfully")
-                    else:
-                        logger.warning("Password field found but may not be interactable")
-                    
+                    # Try the default password selector first
+                    password_element = self.page.wait_for_selector(password_selector, state="visible", timeout=30000)  # Increased timeout
+                    if password_element:
+                        logger.info("Password field found with standard selector")
+                        self.page.fill(password_selector, os.getenv("TWITTER_PASSWORD"))
+                        logger.info("Password entered")
+                        password_found = True
+                        
                     # Take screenshot to debug what's visible
                     self.page.screenshot(path="password_field_found.png")
                     
@@ -135,8 +139,7 @@ class TwitterClient:
                     
                     # Take screenshot to see what's on screen when it fails
                     self.page.screenshot(path="password_field_error.png")
-                    
-                    # Try alternative selectors that might work
+                      # Try alternative selectors that might work
                     logger.info("Trying alternative password selectors...")
                     alt_selectors = [
                         "[data-testid='password']",
@@ -145,20 +148,51 @@ class TwitterClient:
                         "input[autocomplete='current-password']"
                     ]
                     
-                    password_visible = None
                     for selector in alt_selectors:
                         try:
                             logger.info(f"Trying selector: {selector}")
-                            password_visible = self.page.wait_for_selector(selector, state="visible", timeout=5000)
-                            if password_visible:
+                            # First check if the selector exists
+                            element = self.page.query_selector(selector)
+                            if element:
                                 logger.info(f"Found password field with alternative selector: {selector}")
-                                break
-                        except Exception:
+                                try:
+                                    # Method 1: Try using the selector string directly
+                                    self.page.fill(selector, os.getenv("TWITTER_PASSWORD"))
+                                    logger.info(f"Password entered using selector string")
+                                    password_found = True
+                                    break
+                                except Exception as fill_err:
+                                    logger.error(f"Error using fill with selector: {str(fill_err)}")
+                                    try:
+                                        # Method 2: Try using type() on the element
+                                        element.type(os.getenv("TWITTER_PASSWORD"))
+                                        logger.info(f"Password entered using element.type()")
+                                        password_found = True
+                                        break
+                                    except Exception as type_err:
+                                        logger.error(f"Error using type() method: {str(type_err)}")
+                                        try:
+                                            # Method 3: Try JavaScript evaluation
+                                            js_result = self.page.evaluate(f'''(selector) => {{
+                                                const element = document.querySelector(selector);
+                                                if (element) {{
+                                                    element.value = "{os.getenv("TWITTER_PASSWORD")}";
+                                                    return "success";
+                                                }}
+                                                return "not found";
+                                            }}''', selector)
+                                            logger.info(f"Password entered using JavaScript: {js_result}")
+                                            password_found = True
+                                            break
+                                        except Exception as js_err:
+                                            logger.error(f"Error using JavaScript: {str(js_err)}")
+                                            continue
+                        except Exception as alt_err:
+                            logger.error(f"Error with alternative selector {selector}: {str(alt_err)}")
                             continue
                 
-                if password_visible:
-                    self.page.fill(password_visible, os.getenv("TWITTER_PASSWORD"))
-                    logger.info("Password entered")
+                if password_found:
+                    logger.info("Password entry successful")
                     random_delay(2, 3)
                     
                     # Click Log in button
